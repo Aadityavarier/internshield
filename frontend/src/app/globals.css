@@ -420,6 +420,49 @@ a:hover {
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
+/* --- Hamburger Button (hidden on desktop) --- */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  z-index: 110;
+}
+
+.hamburger-line {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text-secondary);
+  border-radius: 2px;
+  transition: all var(--transition-fast);
+  transform-origin: center;
+}
+
+.hamburger.open .hamburger-line:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+  background: var(--primary-400);
+}
+
+.hamburger.open .hamburger-line:nth-child(2) {
+  opacity: 0;
+  transform: scaleX(0);
+}
+
+.hamburger.open .hamburger-line:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+  background: var(--primary-400);
+}
+
+/* --- Mobile Overlay --- */
+.navbar-overlay {
+  display: none;
+}
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
   .container {
@@ -430,8 +473,63 @@ a:hover {
     padding: 0 16px;
   }
 
-  .nav-link span {
-    display: none;
+  .hamburger {
+    display: flex;
+  }
+
+  .navbar-links {
+    position: fixed;
+    top: 69px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    background: rgba(10, 10, 15, 0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 16px 24px 24px;
+    gap: 4px;
+    transform: translateY(-120%);
+    opacity: 0;
+    visibility: hidden;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                visibility 0.3s ease;
+    z-index: 105;
+  }
+
+  .navbar-links--open {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    font-size: 1rem;
+    border-radius: var(--radius-md);
+    width: 100%;
+  }
+
+  .nav-link:hover {
+    background: rgba(99, 102, 241, 0.08);
+  }
+
+  .nav-link.active {
+    background: rgba(99, 102, 241, 0.12);
+  }
+
+  .navbar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    top: 69px;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    animation: fadeIn 0.2s ease-out;
   }
 }
 
