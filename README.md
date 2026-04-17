@@ -13,7 +13,7 @@ InternShield is a free, AI-powered tool that helps students verify the authentic
 - **Multi-format input** — Analyze PDFs, images (JPG/PNG), DOCX, TXT, or paste text directly
 - **8-point rule engine** — Checks for suspicious email domains, fake company names, urgency tactics, implausible stipends, missing fields, and more
 - **NLP language analysis** — Detects fraud indicators and genuine offer patterns using keyword-weighted classification
-- **Entity verification** — Extracts and verifies company names, people, dates, and contacts using spaCy NER
+- **Entity verification** — Extracts and verifies company names, people, dates, and contacts (spaCy NER or regex fallback)
 - **Enriched analysis** — Optionally provide company name, website, and email for deeper verification
 - **Education section** — Learn how to spot fake offers with a detailed fake vs. genuine comparison
 - **Privacy first** — No signup required, no data stored permanently, fully anonymous
@@ -43,7 +43,7 @@ InternShield is a free, AI-powered tool that helps students verify the authentic
 |-----------|---------|--------|
 | **Rule Engine** | 8 deterministic structural checks (email domain, stipend, fake companies, missing fields, dates, grammar, urgency, greeting) | 30% |
 | **NLP Classifier** | Keyword-weighted language pattern analysis (genuine vs fraud indicators) | 50% |
-| **NER Extractor** | Named entity extraction & verification using spaCy (companies, people, dates, contacts) | 20% |
+| **NER Extractor** | Named entity extraction & verification using spaCy or regex fallback (companies, people, dates, contacts) | 20% |
 
 ### Scoring
 
@@ -81,7 +81,9 @@ venv\Scripts\activate
 # source venv/bin/activate
 
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm
+
+# Optional: install spaCy for enhanced NER (regex fallback works without it)
+# pip install spacy && python -m spacy download en_core_web_sm
 
 # Copy and fill env variables (optional — works without Supabase)
 copy .env.example .env
@@ -216,7 +218,7 @@ SUPABASE_KEY=your_anon_key
 |-------|------------|
 | **Frontend** | Next.js 16, React 19, TypeScript, CSS Modules |
 | **Backend** | FastAPI, Python 3.9+, Pydantic v2 |
-| **ML/NLP** | spaCy, regex-based NLP, textstat, rapidfuzz |
+| **ML/NLP** | Keyword-weighted NLP classifier, regex-based NER, spaCy (optional), textstat, rapidfuzz |
 | **OCR** | Tesseract (optional), pdfplumber, python-docx, Pillow |
 | **Database** | Supabase/PostgreSQL (optional — works without it) |
 | **Design** | Dark mode, glassmorphism, Inter font, micro-animations |
@@ -225,7 +227,7 @@ SUPABASE_KEY=your_anon_key
 
 ## 📄 License
 
-This project is open source and available for educational and non-commercial use.
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
