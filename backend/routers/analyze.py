@@ -190,15 +190,16 @@ async def analyze(
     if company_name_input and company_name_input.strip():
         entities["company_name"] = company_name_input.strip()
 
+    # Combine all flags (enrichment + rule + NLP + NER)
+    all_flags = enrichment_flags + rule_flags + nlp_flags + ner_flags
+
     # --- Step 3: Compute final score ---
     final_score, verdict, dimension_scores = compute_final_score(
         nlp_confidence=nlp_confidence,
         rule_suspicion=rule_suspicion,
         ner_verification=ner_score,
+        flag_count=len(all_flags),
     )
-
-    # Combine all flags (enrichment + rule + NLP + NER)
-    all_flags = enrichment_flags + rule_flags + nlp_flags + ner_flags
 
     # Sort flags by severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}

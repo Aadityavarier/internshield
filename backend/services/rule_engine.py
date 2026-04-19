@@ -1,7 +1,7 @@
 """
 InternShield — Rule-Based Analysis Engine
 
-8 deterministic rules that catch structural red flags in offer letters.
+10 deterministic rules that catch structural red flags in offer letters.
 Each rule returns a score (0.0 = safe, 1.0 = highly suspicious) and a reason.
 """
 
@@ -44,12 +44,16 @@ URGENCY_PHRASES = [
     "confirm within",
     "hurry up",
     "first come first serve",
+    "last few seats",
+    "offer valid till",
+    "respond today",
+    "do not delay",
 ]
 
 
 def run_all_rules(text: str) -> Tuple[float, list[dict]]:
     """
-    Run all 8 rules against extracted text.
+    Run all 10 rules against extracted text.
     Returns (aggregate_score, list_of_flags).
     aggregate_score: 0.0 = all rules pass, 1.0 = all rules flag maximally.
     """
@@ -62,22 +66,34 @@ def run_all_rules(text: str) -> Tuple[float, list[dict]]:
         check_grammar_quality,
         check_urgency_language,
         check_generic_greeting,
+        check_suspicious_links,
+        check_payment_demands,
     ]
 
     flags = []
     total_score = 0.0
+    triggered_count = 0
 
     for rule_fn in rules:
         score, flag = rule_fn(text)
         total_score += score
+        if score > 0.3:
+            triggered_count += 1
         if flag:
-            flags.append(flag)
+            if isinstance(flag, list):
+                flags.extend(flag)
+            else:
+                flags.append(flag)
 
     # Normalize to 0-1 range
     aggregate = total_score / len(rules)
 
-    # Invert: high rule score = suspicious, so confidence = 1 - aggregate
-    # But we return the "suspicion" score to the caller
+    # Apply a boosted aggregate if multiple rules triggered
+    if triggered_count >= 5:
+        aggregate = min(aggregate * 1.3, 1.0)
+    elif triggered_count >= 3:
+        aggregate = min(aggregate * 1.15, 1.0)
+
     return aggregate, flags
 
 
@@ -93,22 +109,36 @@ def check_email_domain(text: str) -> Tuple[float, dict | None]:
     found_emails = re.findall(email_pattern, text)
 
     if not found_emails:
-        return 0.3, {
+        return 0.4, {
             "rule": "email_domain",
             "severity": "medium",
             "message": "No email address found in the letter. Legitimate offer letters typically include a corporate email.",
-            "score": 0.3,
+            "score": 0.4,
         }
 
+    personal_found = []
+    corporate_found = []
     for domain in found_emails:
         domain_lower = domain.lower()
         if domain_lower in personal_domains:
-            return 0.8, {
-                "rule": "email_domain",
-                "severity": "high",
-                "message": f"Email domain is {domain_lower} — a personal email service. Legitimate companies use corporate email domains.",
-                "score": 0.8,
-            }
+            personal_found.append(domain_lower)
+        else:
+            corporate_found.append(domain_lower)
+
+    if personal_found and not corporate_found:
+        return 0.8, {
+            "rule": "email_domain",
+            "severity": "high",
+            "message": f"Email domain is {personal_found[0]} — a personal email service. Legitimate companies use corporate email domains.",
+            "score": 0.8,
+        }
+    elif personal_found and corporate_found:
+        return 0.3, {
+            "rule": "email_domain",
+            "severity": "medium",
+            "message": f"Mix of personal ({personal_found[0]}) and corporate email domains found. Verify the corporate email independently.",
+            "score": 0.3,
+        }
 
     return 0.0, None
 
@@ -209,19 +239,37 @@ def check_missing_fields(text: str) -> Tuple[float, dict | None]:
     if not any(ind in text_lower for ind in date_indicators):
         missing.append("joining/start date")
 
-    if len(missing) >= 3:
-        return 0.7, {
+    # Check for compensation details
+    comp_indicators = ["salary", "stipend", "compensation", "ctc", "remuneration", "pay"]
+    if not any(ind in text_lower for ind in comp_indicators):
+        missing.append("compensation/salary details")
+
+    # Check for role/designation
+    role_indicators = ["designation", "position", "role", "job title"]
+    if not any(ind in text_lower for ind in role_indicators):
+        missing.append("role/designation")
+
+    # Scoring: more missing = higher suspicion (lowered threshold from 3 to 2)
+    if len(missing) >= 4:
+        return 0.8, {
             "rule": "missing_fields",
             "severity": "high",
             "message": f"Letter is missing critical fields: {', '.join(missing)}. Legitimate offer letters typically include all of these.",
-            "score": 0.7,
+            "score": 0.8,
         }
-    elif len(missing) >= 1:
-        return 0.3, {
+    elif len(missing) >= 2:
+        return 0.5, {
             "rule": "missing_fields",
             "severity": "medium",
             "message": f"Letter is missing: {', '.join(missing)}. Consider verifying these details independently.",
-            "score": 0.3,
+            "score": 0.5,
+        }
+    elif len(missing) == 1:
+        return 0.2, {
+            "rule": "missing_fields",
+            "severity": "low",
+            "message": f"Letter is missing: {', '.join(missing)}.",
+            "score": 0.2,
         }
 
     return 0.0, None
@@ -269,11 +317,11 @@ def check_date_logic(text: str) -> Tuple[float, dict | None]:
 def check_grammar_quality(text: str) -> Tuple[float, dict | None]:
     """Rule 6: Check text readability and quality."""
     if len(text) < 100:
-        return 0.4, {
+        return 0.6, {
             "rule": "grammar_quality",
-            "severity": "medium",
+            "severity": "high",
             "message": "Letter is unusually short. Legitimate offer letters typically contain detailed terms and conditions.",
-            "score": 0.4,
+            "score": 0.6,
         }
 
     # Flesch reading ease: higher = easier to read
@@ -312,12 +360,19 @@ def check_urgency_language(text: str) -> Tuple[float, dict | None]:
         if phrase in text_lower:
             found_phrases.append(phrase)
 
-    if len(found_phrases) >= 2:
-        return 0.8, {
+    if len(found_phrases) >= 3:
+        return 0.9, {
+            "rule": "urgency_language",
+            "severity": "critical",
+            "message": f"Letter uses multiple high-pressure language tactics: \"{'\", \"'.join(found_phrases[:3])}\". This is a strong scam indicator.",
+            "score": 0.9,
+        }
+    elif len(found_phrases) == 2:
+        return 0.7, {
             "rule": "urgency_language",
             "severity": "high",
-            "message": f"Letter uses multiple high-pressure language tactics: \"{'\", \"'.join(found_phrases)}\". Legitimate companies don't pressure candidates to respond immediately.",
-            "score": 0.8,
+            "message": f"Letter uses high-pressure language: \"{'\", \"'.join(found_phrases)}\". Legitimate companies don't pressure candidates to respond immediately.",
+            "score": 0.7,
         }
     elif len(found_phrases) == 1:
         return 0.4, {
@@ -339,6 +394,8 @@ def check_generic_greeting(text: str) -> Tuple[float, dict | None]:
         r"dear\s+sir\s*/?\s*ma'?a?m",
         r"to\s+whom\s+it\s+may\s+concern",
         r"dear\s+sir\s+or\s+madam",
+        r"hi\s+there",
+        r"hello\s+candidate",
     ]
 
     text_lower = text.lower()
@@ -350,5 +407,84 @@ def check_generic_greeting(text: str) -> Tuple[float, dict | None]:
                 "message": "Letter uses a generic greeting instead of addressing you by name. Legitimate offer letters are personalized.",
                 "score": 0.5,
             }
+
+    return 0.0, None
+
+
+def check_suspicious_links(text: str) -> Tuple[float, dict | None]:
+    """Rule 9: Flag suspicious links — Google Forms, URL shorteners, etc."""
+    text_lower = text.lower()
+    flags = []
+    max_score = 0.0
+
+    # Google Forms / Typeform / survey links
+    if re.search(r"(docs\.google\.com/forms|forms\.gle|typeform\.com|jotform\.com|surveymonkey)", text_lower):
+        max_score = max(max_score, 0.8)
+        flags.append({
+            "rule": "suspicious_links",
+            "severity": "high",
+            "message": "Letter contains a link to Google Forms / survey tool. Legitimate companies do not use Google Forms for hiring.",
+            "score": 0.8,
+        })
+
+    # URL shorteners
+    if re.search(r"(bit\.ly|tinyurl|short\.link|goo\.gl|t\.co|is\.gd|buff\.ly)", text_lower):
+        max_score = max(max_score, 0.6)
+        flags.append({
+            "rule": "suspicious_links",
+            "severity": "medium",
+            "message": "Letter contains shortened URLs which obscure the actual destination. This is a common tactic in scam letters.",
+            "score": 0.6,
+        })
+
+    # WhatsApp/Telegram group links
+    if re.search(r"(chat\.whatsapp\.com|t\.me/|wa\.me/)", text_lower):
+        max_score = max(max_score, 0.7)
+        flags.append({
+            "rule": "suspicious_links",
+            "severity": "high",
+            "message": "Letter contains WhatsApp/Telegram group invite links. Legitimate companies use official channels for onboarding.",
+            "score": 0.7,
+        })
+
+    if flags:
+        return max_score, flags
+
+    return 0.0, None
+
+
+def check_payment_demands(text: str) -> Tuple[float, dict | None]:
+    """Rule 10: Explicitly check for monetary demands from candidate."""
+    text_lower = text.lower()
+    flags = []
+    max_score = 0.0
+
+    payment_patterns = [
+        (r"(pay|deposit|transfer)\s+(rs\.?|₹|inr)\s*[\d,]+", 0.9,
+         "Letter explicitly asks you to pay money. Legitimate employers NEVER charge candidates."),
+        (r"(registration\s+fee|processing\s+fee|admin\s+fee|joining\s+fee)", 0.9,
+         "Letter mentions a registration/processing/joining fee. This is a hallmark of scam offers."),
+        (r"(security\s+deposit|caution\s+deposit|refundable\s+deposit)", 0.85,
+         "Letter asks for a 'security deposit'. Legitimate companies do not require deposits from interns/employees."),
+        (r"(training\s+charges?|course\s+fee|certification\s+fee|material\s+fee)", 0.8,
+         "Letter charges for training/certification. Legitimate employers provide training at their cost."),
+        (r"(bank\s+account|account\s+number|ifsc|upi|gpay|phonepe|paytm).{0,50}(send|transfer|pay|deposit)", 0.9,
+         "Letter provides payment details and asks you to transfer money. This is a scam."),
+        (r"(neft|rtgs|imps).{0,50}(transfer|send|deposit)", 0.85,
+         "Letter references bank transfer methods for candidate payments. Major red flag."),
+    ]
+
+    for pattern, score, message in payment_patterns:
+        if re.search(pattern, text_lower):
+            max_score = max(max_score, score)
+            flags.append({
+                "rule": "payment_demand",
+                "severity": "critical",
+                "message": message,
+                "score": score,
+            })
+
+    if flags:
+        return max_score, flags
 
     return 0.0, None
